@@ -12,9 +12,12 @@
 #define LARGEUR_MORCEAU 4
 #define NOMBRE_MORCEAU 4
 #define TAILLE_BLOC LARGEUR_MORCEAU * NOMBRE_MORCEAU
-#define KEY 0b1010111010111011
+#define ETAGE 4
+#define KEY 0xBEBB
 
 typedef uint16_t bloc;
+typedef uint16_t key;
+typedef uint8_t word;
 
 const uint8_t SBOX[TAILLE_BLOC] = {
     0xE, 0x4, 0xD, 0x1,
@@ -34,6 +37,8 @@ const uint8_t PBOX[16] = {
 
 uint8_t R_PBOX[TAILLE_BLOC];
 
+key round_keys[ETAGE];
+
 bloc apply_sbox(bloc entry);
 bloc apply_reverse_sbox(bloc entry);
 void construct_reverse_sbox();
@@ -42,11 +47,21 @@ bloc apply_pbox(bloc entry);
 bloc apply_reverse_pbox(bloc entry);
 void construct_reverse_pbox();
 
+void generate_round_keys(key key);
+
 int main() {
     // Construction reverse sbox
     construct_reverse_sbox();
     // Construction reverse pbox
     construct_reverse_pbox();
+    // Génération des clés d'étage (round keys)
+    generate_round_keys(KEY);
+
+    printf("### ROUND KEYS ###\n");
+    printf("%04X \n", KEY);
+    for (uint8_t i = 0; i < ETAGE; i++) {
+        printf("%04X \n", round_keys[i]);
+    }
 
     // Test SBOX 
     bloc b1 = 0x0004; // 0000 0000 0000 0100
@@ -192,5 +207,40 @@ void construct_reverse_pbox() {
         R_PBOX[value_sbox] = i;
 
         // ou R_PBOX[PBOX[i]] = i; // moins lisible
+    }
+}
+
+void generate_round_keys(key master_key) {
+    key k = master_key;
+
+    for (uint8_t i = 0; i < ETAGE; i++) {
+
+        k = k >> (3 * i);
+
+        // extraction des mots
+        word w1 = k & 0x000F;
+        word w2 = (k >> 4) & 0x000F;
+        word w3 = (k >> 8) & 0x000F;
+        word w4 = (k >> 12) & 0x000F;
+
+        // Diversification de la clé
+        /// XOR + Substitution
+        word nw1 = w3 ^ w2 ^ w4;
+        word nw2 = w1 ^ w4 ^ w3;
+        word nw3 = w4 ^ w3 ^ w1;
+        word nw4 = w2 ^ SBOX[w1 ^ (i & 0xF)]; 
+
+        /// Melange
+        k = 
+            (key) nw3 << 12 | 
+            (key) nw1 << 8 |    
+            (key) nw4 << 4 |
+            (key) nw2 ;
+
+        /// Permutation
+        k = apply_pbox(k);
+        
+        // Ecriture de la clé
+        round_keys[i] = k;
     }
 }
