@@ -25,21 +25,28 @@ const uint8_t SBOX[TAILLE_BLOC] = {
 
 uint8_t R_SBOX[TAILLE_BLOC];
 
-const uint8_t PBOX[TAILLE_BLOC] = {
-    0, 4, 8, 12,
-    1, 5, 9, 13,
-    2, 6, 10, 14,
-    3, 7, 11, 15
+const uint8_t PBOX[16] = {
+    6, 11, 0, 9,
+    12, 3, 14, 5,
+    2, 15, 4, 13,
+    8, 1, 10, 7
 };
+
+uint8_t R_PBOX[TAILLE_BLOC];
 
 bloc apply_sbox(bloc entry);
 bloc apply_reverse_sbox(bloc entry);
 void construct_reverse_sbox();
 
+bloc apply_pbox(bloc entry);
+bloc apply_reverse_pbox(bloc entry);
+void construct_reverse_pbox();
+
 int main() {
     // Construction reverse sbox
     construct_reverse_sbox();
     // Construction reverse pbox
+    construct_reverse_pbox();
 
     // Test SBOX 
     bloc b1 = 0x0004; // 0000 0000 0000 0100
@@ -58,6 +65,22 @@ int main() {
     resp_sbox = apply_reverse_sbox(resp_sbox);
     printf("Attendu: %04X \n", b1);
     printf("Recu: %04X \n", resp_sbox);
+
+    resp_attendue = 0X0001;
+    bloc resp_pbox = apply_pbox(b1);
+
+    printf("\n### Test PBOX ###\n\n");
+    printf("B1: %04X \n", b1);
+    printf("Attendu: %04X \n", resp_attendue);
+    printf("Recu: %04X \n", resp_pbox);
+
+    printf("\n### Test R_PBOX ###\n\n");
+    printf("B1: %04X \n", resp_pbox);
+    resp_pbox = apply_reverse_pbox(resp_pbox);
+    printf("Attendu: %04X \n", b1);
+    printf("Recu: %04X \n", resp_pbox);
+
+
 
     return 0;
 }
@@ -114,5 +137,60 @@ void construct_reverse_sbox() {
         R_SBOX[value_sbox] = i;
 
         // ou R_SBOX[SBOX[i]] = i; // moins lisible
+    }
+}
+
+bloc apply_pbox(bloc entry_bloc) {
+    bloc new_bloc = 0;
+
+    for (uint8_t i = 0; i < TAILLE_BLOC; i++) {
+        // décalage
+        bloc sub_bit = entry_bloc >> (i);
+        
+        // test du bit
+        sub_bit = sub_bit & 1; 
+        
+        // récupération de la position
+        uint8_t value = PBOX[i];
+        
+        // décalage gauche
+        sub_bit = sub_bit << value;
+        
+        // placement du bit dans la réponse
+        new_bloc |= sub_bit;
+    }
+
+    return new_bloc;
+}
+
+bloc apply_reverse_pbox(bloc entry_bloc) {
+        bloc new_bloc = 0;
+
+    for (uint8_t i = 0; i < TAILLE_BLOC; i++) {
+        // décalage
+        bloc sub_bit = entry_bloc >> (i);
+        
+        // test du bit
+        sub_bit = sub_bit & 1; 
+        
+        // récupération de la position
+        uint8_t value = R_PBOX[i];
+        
+        // décalage gauche
+        sub_bit = sub_bit << value;
+        
+        // placement du bit dans la réponse
+        new_bloc |= sub_bit;
+    }
+
+    return new_bloc;
+}
+
+void construct_reverse_pbox() {
+    for (uint8_t i = 0; i < TAILLE_BLOC; i++) {
+        uint8_t value_sbox = PBOX[i];
+        R_PBOX[value_sbox] = i;
+
+        // ou R_PBOX[PBOX[i]] = i; // moins lisible
     }
 }
