@@ -8,6 +8,7 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <stdio.h>
+#include <string.h>
 
 #define LARGEUR_MORCEAU 4
 #define NOMBRE_MORCEAU 4
@@ -57,45 +58,102 @@ int main() {
     // Génération des clés d'étage (round keys)
     generate_round_keys(KEY);
 
-    printf("### ROUND KEYS ###\n");
-    printf("%04X \n", KEY);
-    for (uint8_t i = 0; i < ETAGE; i++) {
-        printf("%04X \n", round_keys[i]);
+    char *msg = "Je ne dois pas être lu.";
+    size_t msg_len = strlen(msg);
+    size_t nb_bloc_in_msg = (msg_len + 1) / 2; // un char = 8 bits, un bloc = 16 bits
+    
+    uint8_t *msg_encrypted = malloc(nb_bloc_in_msg * 2); // on a x bloc de 16 qu'on stocke par 8
+
+    for (size_t i = 0; i < nb_bloc_in_msg; i++) {
+        bloc b = (uint8_t)(msg[2 * i]); // on prend les 8 premiers bits
+        b = b << 8; // on les décale pour ajouter les 8 suivants pour former un bloc
+
+        if (2 * i + 1 < msg_len) { // si un second octet
+            b |= (uint8_t)msg[2 * i + 1];
+        } else { // Padding : ajout de 0x00
+            b |= 0x00;
+        }
+
+        printf("B%d : %04X \n", (uint16_t)i, b);
+        
+        // encrypt
+        for (uint8_t j = 0; j < ETAGE; j++) {
+            // XOR key
+            b ^= round_keys[j];
+
+            // Sub
+            b = apply_sbox(b);
+
+            // Perm
+            b = apply_pbox(b);
+        }
+
+        // Dernier tour 
+        b = apply_sbox(b);
+
+        printf("B%d encrypted : %04X \n", (uint16_t)i, b);
+
+        msg_encrypted[2*i] = (uint8_t)(b >> 8); // prendre les 8 bits de gauche
+        msg_encrypted[2*i+1] = (uint8_t)(b & 0xFF); // ne garder que les 8 bits de droite
     }
 
-    // Test SBOX 
-    bloc b1 = 0x0004; // 0000 0000 0000 0100
-    bloc resp_attendue = 0xEEE2; // 1110 1110 1110 0010 // 0XE 0XE 0XE 0X2
-
-    bloc resp_sbox = apply_sbox(b1);
-
-    printf("### Test SBOX ###\n\n");
-    printf("B1: %04X \n", b1);
-    printf("Attendu: %04X \n", resp_attendue);
-    printf("Recu: %04X \n", resp_sbox);
-
+    char *msg_encr = malloc(nb_bloc_in_msg * 4 + 1);
     
-    printf("\n### Test R_SBOX ###\n\n");
-    printf("B1: %04X \n", resp_sbox);
-    resp_sbox = apply_reverse_sbox(resp_sbox);
-    printf("Attendu: %04X \n", b1);
-    printf("Recu: %04X \n", resp_sbox);
+    for (size_t i = 0; i < nb_bloc_in_msg * 2; i++) {
+        sprintf(msg_encr + 2 * i, "%02X", (unsigned int)msg_encrypted[i]);
+    }
+    printf("\nMessage chiffré : %s", msg_encr);
+    
+    printf("\n\n");
 
-    resp_attendue = 0X0001;
-    bloc resp_pbox = apply_pbox(b1);
+    // Decrypt
+    size_t msg_enc_len = strlen(msg_encr);
+    size_t nb_bloc_in_msg_enc = msg_enc_len / 4; // 4 parce que c'est de l'hexa
 
-    printf("\n### Test PBOX ###\n\n");
-    printf("B1: %04X \n", b1);
-    printf("Attendu: %04X \n", resp_attendue);
-    printf("Recu: %04X \n", resp_pbox);
+    if (msg_enc_len % 4 != 0) {
+        printf("Longueur hexadecimale invalide\n");
+        return 1;
+    }
 
-    printf("\n### Test R_PBOX ###\n\n");
-    printf("B1: %04X \n", resp_pbox);
-    resp_pbox = apply_reverse_pbox(resp_pbox);
-    printf("Attendu: %04X \n", b1);
-    printf("Recu: %04X \n", resp_pbox);
+    char *msg_decrypted = malloc(nb_bloc_in_msg_enc * 2 + 1); // + 1 pour le \0
 
+    for (size_t i = 0; i < nb_bloc_in_msg_enc; i++) {
+        unsigned int value = 0;
+        
+        sscanf(msg_encr + 4 * i, "%4X", &value); // à partir de l'adresse msg_encr + 4 * i, lit les prochains format 04X et place le dans bits;
+        
+        bloc b = (bloc)value;
 
+        printf("B%d : %04X \n", (uint16_t)i, b);
+
+        // Dernier tour 
+        b = apply_reverse_sbox(b);
+        
+        // decryp
+        for (int j = ETAGE-1; j >= 0; j--) {
+            // Perm
+            b = apply_reverse_pbox(b);
+            
+            // Sub
+            b = apply_reverse_sbox(b);
+            
+            // XOR key
+            b ^= round_keys[j];
+        }
+
+        printf("B%d decrypted : %04X \n", (uint16_t)i, b);
+
+        msg_decrypted[2*i] = (char)(uint8_t)(b >> 8); // prendre les 8 bits de gauche
+        msg_decrypted[2*i+1] = (char)(uint8_t)(b & 0xFF); // ne garder que les 8 bits de droite
+    }
+
+    // Fin de chaîne
+    msg_decrypted[nb_bloc_in_msg_enc * 2] = '\0';
+
+    printf("\nMessage déchiffré : %s\n", msg_decrypted);
+
+    free(msg_encrypted);
+    free(msg_decrypted);
 
     return 0;
 }
